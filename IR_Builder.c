@@ -13,15 +13,18 @@ void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vecto
 LLVMTypeRef int_data_type;
 LLVMTypeRef void_data_type;
 std::unordered_map <std::string, LLVMValueRef> var_map;
+LLVMValueRef main_function;
 LLVMTypeRef read_type;
 LLVMValueRef readFunc;
 LLVMTypeRef print_type;
 LLVMValueRef print_func;
 
+LLVMContextRef context;
+
 // main algorithm
 void algorithm(astNode* prog_node) {
     // creating context to store all LLVM IR objects
-    LLVMContextRef context = LLVMContextCreate();
+    context = LLVMContextCreate();
 
     // getting the architecture from the machine
     char* triple = LLVMGetDefaultTargetTriple();
@@ -74,7 +77,7 @@ void algorithm(astNode* prog_node) {
                              param_types, param_count,
                              0);
     
-    LLVMValueRef main_function = LLVMAddFunction(module, "main_function", functionType);
+    main_function = LLVMAddFunction(module, "main_function", functionType);
 
     // generating the entry basic block
     LLVMBasicBlockRef entryBB = LLVMAppendBasicBlockInContext(context,
@@ -224,6 +227,10 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
         LLVMValueRef value_to_print = genIRExpr(stmt_object.call.param, builder);
         LLVMBuildCall2(builder, print_type, print_func, &value_to_print, 1, "call_to_print");
         return startBB;
+    } else if (stmt_object.type == ast_while) {
+        LLVMPositionBuilderAtEnd(builder, startBB);
+        // generating a basic block to check the condition of the while loop
+        LLVMAppendBasicBlockInContext(context, main_function, "condBB");
     }
 }
 
