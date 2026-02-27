@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <queue> // for BFS later
 
 void main_algorithm(astNode* prog_node);
 LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLVMBasicBlockRef startBB);
@@ -146,7 +147,39 @@ void main_algorithm(astNode* prog_node) {
     }
 
     // removing all basic blocks that do not have any predecessor basic blocks
-    
+    // performing BFS to determine all the blocks that are in the connected component (contained in visited)
+    std::queue<LLVMBasicBlockRef> q = {entryBB}; // we start with entry block
+    std::unordered_set<LLVMBasicBlockRef> visited; // any basic block which is not here would mean it does not have predecessor blocks
+    while (!q.empty()) {
+        LLVMBasicBlockRef curr_bb = q.front();
+        q.pop();
+        visited.insert(curr_bb);
+
+        LLVMValueRef curr_terminator = LLVMGetBasicBlockTerminator(curr_bb);
+        int index_of_successor = 0;
+        int total_successors_for_curr = LLVMGetNumSuccessors(curr_terminator);
+        while (index_of_successor < total_successors_for_curr) {
+            // if we get visited.end() that means the successor is not found in visited so we add it to the queue 
+            // and mark as visited
+            if (visited.find(LLVMGetSuccessor(curr_bb, index_of_successor)) == visited.end()){
+                q.push(LLVMGetSuccessor(curr_bb, index_of_successor));
+                visited.insert(LLVMGetSuccessor(curr_bb, index_of_successor));
+            }
+        }
+    }
+    LLVMBasicBlockRef temporary_reference_for_bb;
+    for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(main_function); bb != NULL; bb = LLVMGetNextBasicBlock(temporary_reference_for_bb)) {
+        temporary_reference_for_bb = bb;
+        // if the bb is not found in basic block at this point that means it does not have predecessors
+        // so we delete it 
+        if (visited.find(bb) == visited.end()) {
+            LLVMDeleteBasicBlock(bb);
+        }
+    }
+    // memory cleanup
+    LLVMDisposeBuilder(builder);
+    LLVMDisposeModule(module);
+    LLVMContextDispose(context);
 }
 
 void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vector<astNode*> * stmt_list) {
