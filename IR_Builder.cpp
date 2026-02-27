@@ -79,7 +79,7 @@ void main_algorithm(astNode* prog_node) {
                              param_types, param_count,
                              0);
     
-    main_function = LLVMAddFunction(module, "main_function", functionType);
+    main_function = LLVMAddFunction(module, "main_function", function_type);
 
     // generating the entry basic block
     LLVMBasicBlockRef entryBB = LLVMAppendBasicBlockInContext(context,
@@ -131,7 +131,7 @@ void main_algorithm(astNode* prog_node) {
     LLVMPositionBuilderAtEnd(builder, retBB);
 
     // adding a load instruction from the ret_ref to retBB
-    LLVMValueRef load_ins_to_retBB = LLVMBuildLoad2(builder, int_data_type, ret_ref,  "load")
+    LLVMValueRef load_ins_to_retBB = LLVMBuildLoad2(builder, int_data_type, ret_ref,  "load");
 
     // adding return instruction for the load instruction
     LLVMValueRef return_ins = LLVMBuildRet(builder, load_ins_to_retBB);
@@ -148,7 +148,8 @@ void main_algorithm(astNode* prog_node) {
 
     // removing all basic blocks that do not have any predecessor basic blocks
     // performing BFS to determine all the blocks that are in the connected component (contained in visited)
-    std::queue<LLVMBasicBlockRef> q = {entryBB}; // we start with entry block
+    std::queue<LLVMBasicBlockRef> q;
+    q.push(entryBB) // we start with entry block
     std::unordered_set<LLVMBasicBlockRef> visited; // any basic block which is not here would mean it does not have predecessor blocks
     while (!q.empty()) {
         LLVMBasicBlockRef curr_bb = q.front();
@@ -161,10 +162,11 @@ void main_algorithm(astNode* prog_node) {
         while (index_of_successor < total_successors_for_curr) {
             // if we get visited.end() that means the successor is not found in visited so we add it to the queue 
             // and mark as visited
-            if (visited.find(LLVMGetSuccessor(curr_bb, index_of_successor)) == visited.end()){
-                q.push(LLVMGetSuccessor(curr_bb, index_of_successor));
-                visited.insert(LLVMGetSuccessor(curr_bb, index_of_successor));
+            if (visited.find(LLVMGetSuccessor(curr_terminator, index_of_successor)) == visited.end()){
+                q.push(LLVMGetSuccessor(curr_terminator index_of_successor));
+                visited.insert(LLVMGetSuccessor(curr_terminator, index_of_successor));
             }
+            index_of_successor++;
         }
     }
     LLVMBasicBlockRef temporary_reference_for_bb;
@@ -284,9 +286,9 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
     } else if (stmt_object.type == ast_if) {
         LLVMPositionBuilderAtEnd(builder, startBB);
         // generating LLVMValueRef of if condition
-        LLVM rexpr_if = genIRExpr(stmt_object.ifn.cond, builder);
+        LLVMValueRef rexpr_if = genIRExpr(stmt_object.ifn.cond, builder);
         // generating two basic blocks that will be successors depending on the condition truth value
-        LLVMBasicBlockRef trueBB = LVMAppendBasicBlockInContext(context, main_function, "trueBB");
+        LLVMBasicBlockRef trueBB = LLVMAppendBasicBlockInContext(context, main_function, "trueBB");
         LLVMBasicBlockRef falseBB = LLVMAppendBasicBlockInContext(context, main_function, "falseBB");
         // generating conditional branch and setting successors accordingly
         LLVMBuildCondBr(builder, rexpr_if, trueBB, falseBB);
@@ -297,7 +299,7 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
             LLVMBuildBr(builder, falseBB);
             return falseBB;
         } else { // case for when we do have an else_body
-            LLVMBasicBlockRef ifExitBB - genIRStmt(stmt_object.ifn.if_body, builder, trueBB);
+            LLVMBasicBlockRef ifExitBB = genIRStmt(stmt_object.ifn.if_body, builder, trueBB);
             LLVMBasicBlockRef elseExitBB = genIRStmt(stmt_object.ifn.else_body, builder, falseBB);
             LLVMBasicBlockRef endBB = LLVMAppendBasicBlockInContext(context, main_function, "endBB");
             LLVMPositionBuilderAtEnd(builder, ifExitBB);
@@ -317,7 +319,7 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
         return endBB;
     } else if (stmt_object.type == ast_block) {
         LLVMBasicBlockRef prevBB = startBB;
-        for (astNode* stmt : *(stmt_object.block.stmt_list){
+        for (astNode* stmt : *(stmt_object.block.stmt_list)){
             prevBB = genIRStmt(stmt, builder, prevBB);
         }
         return prevBB;
@@ -334,12 +336,12 @@ LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder) {
     } else if (expression -> type == ast_var) {
         char* name_of_var = expression -> var.name;
         LLVMValueRef memory_location = var_map[name_of_var];
-        LLVMValueRef load_instruction = LLVMbuildLoad2(builder, int_data_type, memory_location, name_of_var);
+        LLVMValueRef load_instruction = LLVMBuildLoad2(builder, int_data_type, memory_location, name_of_var);
 
         return load_instruction;
 
     } else if (expression -> type == ast_uexpr) {
-        astNode* uexpression = expresion -> uexpr.expr;
+        astNode* uexpression = expression -> uexpr.expr;
         // recursion for the expr in the unary expression node and storing the simplified value
         LLVMValueRef simplified_expr_component = genIRExpr(uexpression, builder);
         // creating the constant 0 to make the unary expression
@@ -407,7 +409,7 @@ LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder) {
             return eq_cmp;
             
         } else if (expression -> rexpr.op == neq) {
-            LLVMValueRef neq_cmp = LLVMBuildICmp(builder, LLVMIntNe, lhs_processed, rhs_processed, "neq_cmp");
+            LLVMValueRef neq_cmp = LLVMBuildICmp(builder, LLVMIntNE, lhs_processed, rhs_processed, "neq_cmp");
 
             return neq_cmp;
 
