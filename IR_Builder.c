@@ -4,12 +4,12 @@
 #include <unordered_set>
 #include <string>
 
-void algorithm(astNode* prog_node);
+void main_algorithm(astNode* prog_node);
 LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLVMBasicBlockRef startBB);
 LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder);
 void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vector<astNode*> * stmt_list);
 
-// relevant objects that are meant to be accessible for functions they get initialized in algorithm
+// relevant objects that are meant to be accessible for functions beyond the local scope
 LLVMTypeRef int_data_type;
 LLVMTypeRef void_data_type;
 std::unordered_map <std::string, LLVMValueRef> var_map;
@@ -18,11 +18,12 @@ LLVMTypeRef read_type;
 LLVMValueRef readFunc;
 LLVMTypeRef print_type;
 LLVMValueRef print_func;
-
+LLVMValueRef ret_ref;
+LLVMBasicBlockRef retBB;
 LLVMContextRef context;
 
 // main algorithm
-void algorithm(astNode* prog_node) {
+void main_algorithm(astNode* prog_node) {
     // creating context to store all LLVM IR objects
     context = LLVMContextCreate();
 
@@ -109,7 +110,7 @@ void algorithm(astNode* prog_node) {
         var_map[name_of_var] = alloca_object;
     }
     // generating the alloc instruction for the return value
-    LLVMValueRef ret_ref = LLVMBuildAlloca(builder, int_data_type, "ret_ref");
+    ret_ref = LLVMBuildAlloca(builder, int_data_type, "ret_ref");
     // generating the store instruction to store function parameter into respective alloca ptr
     if (param_count != 0) {
         // we get the param in LLVMValueRef type to feed as input to LLVMBuildStore
@@ -123,7 +124,7 @@ void algorithm(astNode* prog_node) {
     }
     
     // generating retBB as the return basic block
-    LLVMBasicBlockRef retBB = LLVMAppendBasicBlockInContext(context, main_function, "return");
+    retBB = LLVMAppendBasicBlockInContext(context, main_function, "return");
 
     // setting the position of builder at the end of retBB
     LLVMPositionBuilderAtEnd(builder, retBB);
@@ -145,8 +146,7 @@ void algorithm(astNode* prog_node) {
     }
 
     // removing all basic blocks that do not have any predecessor basic blocks
-
-
+    
 }
 
 void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vector<astNode*> * stmt_list) {
@@ -230,7 +230,64 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
     } else if (stmt_object.type == ast_while) {
         LLVMPositionBuilderAtEnd(builder, startBB);
         // generating a basic block to check the condition of the while loop
-        LLVMAppendBasicBlockInContext(context, main_function, "condBB");
+        LLVMBasicBlockRef condBB = LLVMAppendBasicBlockInContext(context, main_function, "condBB");
+        // unconditional branch at the end of startBB to condBB
+        LLVMBuildBr(builder, condBB);
+        LLVMPositionBuilderAtEnd(builder, condBB);
+        // generating LLVMValueRef of the relational expression in the condition of the while loop
+        LLVMValueRef rexpr_while = genIRExpr(stmt_object.whilen.cond, builder);
+        // generating two basic blocks that will be the successors when condition is true or false respectively
+        LLVMBasicBlockRef trueBB = LLVMAppendBasicBlockInContext(context, main_function, "trueBB");
+        LLVMBasicBlockRef falseBB = LLVMAppendBasicBlockInContext(context, main_function, "falseBB");
+        // creating conditional branch to operate conditionally accordingly
+        LLVMBuildCondBr(builder, rexpr_while, trueBB, falseBB);
+        // generating LLVM IR for the body of the while loop 
+        LLVMBasicBlockRef trueExitBB = genIRStmt(stmt_object.whilen.body, builder, trueBB);
+        // setting position of builder to the end of trueExitBB
+        LLVMPositionBuilderAtEnd(builder, trueExitBB);
+        // generating unconditional branch to condBB at the end of trueExitBB
+        LLVMBuildBr(builder, condBB);
+        return falseBB;
+    } else if (stmt_object.type == ast_if) {
+        LLVMPositionBuilderAtEnd(builder, startBB);
+        // generating LLVMValueRef of if condition
+        LLVM rexpr_if = genIRExpr(stmt_object.ifn.cond, builder);
+        // generating two basic blocks that will be successors depending on the condition truth value
+        LLVMBasicBlockRef trueBB = LVMAppendBasicBlockInContext(context, main_function, "trueBB");
+        LLVMBasicBlockRef falseBB = LLVMAppendBasicBlockInContext(context, main_function, "falseBB");
+        // generating conditional branch and setting successors accordingly
+        LLVMBuildCondBr(builder, rexpr_if, trueBB, falseBB);
+        // case for when else_body is not present
+        if (stmt_object.ifn.else_body == NULL) {
+            LLVMBasicBlockRef ifExitBB = genIRStmt(stmt_object.ifn.if_body, builder, trueBB);
+            LLVMPositionBuilderAtEnd(builder, ifExitBB);
+            LLVMBuildBr(builder, falseBB);
+            return falseBB;
+        } else { // case for when we do have an else_body
+            LLVMBasicBlockRef ifExitBB - genIRStmt(stmt_object.ifn.if_body, builder, trueBB);
+            LLVMBasicBlockRef elseExitBB = genIRStmt(stmt_object.ifn.else_body, builder, falseBB);
+            LLVMBasicBlockRef endBB = LLVMAppendBasicBlockInContext(context, main_function, "endBB");
+            LLVMPositionBuilderAtEnd(builder, ifExitBB);
+            LLVMBuildBr(builder, endBB);
+            LLVMPositionBuilderAtEnd(builder, elseExitBB);
+            LLVMBuildBr(builder, endBB);
+            return endBB;
+        }
+    } else if (stmt_object.type == ast_ret) {
+        LLVMPositionBuilderAtEnd(builder, startBB);
+        // generating LLVMValueRef of the return expr
+        LLVMValueRef ret_expr = genIRExpr(stmt_object.ret.expr, builder);
+        // generating store instruction from LLVMValueRef of return value to ret_ref
+        LLVMBuildStore(builder, ret_expr, ret_ref);
+        LLVMBuildBr(builder, retBB);
+        LLVMBasicBlockRef endBB = LLVMAppendBasicBlockInContext(context, main_function, "endBB");
+        return endBB;
+    } else if (stmt_object.type == ast_block) {
+        LLVMBasicBlockRef prevBB = startBB;
+        for (astNode* stmt : *(stmt_object.block.stmt_list){
+            prevBB = genIRStmt(stmt, builder, prevBB);
+        }
+        return prevBB;
     }
 }
 
