@@ -15,6 +15,8 @@ LLVMTypeRef void_data_type;
 std::unordered_map <std::string, LLVMValueRef> var_map;
 LLVMTypeRef read_type;
 LLVMValueRef readFunc;
+LLVMTypeRef print_type;
+LLVMValueRef print_func;
 
 // main algorithm
 void algorithm(astNode* prog_node) {
@@ -43,8 +45,8 @@ void algorithm(astNode* prog_node) {
     
     // void print(int)
     LLVMTypeRef params_for_print[] = {int_data_type};
-    LLVMTypeRef print_type = LLVMFunctionType(void_data_type, params_for_print, 1, 0);
-    LLVMValueRef print_func = LLVMAddFunction(module, "print", print_type);
+    print_type = LLVMFunctionType(void_data_type, params_for_print, 1, 0);
+    print_func = LLVMAddFunction(module, "print", print_type);
 
     // visiting the function node of the astProg node
     astNode* function_node = prog_node -> prog.func;
@@ -218,6 +220,9 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
         return startBB;
     } else if (stmt_object.type == ast_call) {
         LLVMPositionBuilderAtEnd(builder, startBB);
+        // the value being printed is the parameter of associated call so we pass that as expression input to get its LLVMValueRef
+        LLVMValueRef value_to_print = genIRExpr(stmt_object.call.param, builder);
+        LLVMBuildCall2(builder, )
 
     }
 }
