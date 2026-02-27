@@ -222,8 +222,8 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
         LLVMPositionBuilderAtEnd(builder, startBB);
         // the value being printed is the parameter of associated call so we pass that as expression input to get its LLVMValueRef
         LLVMValueRef value_to_print = genIRExpr(stmt_object.call.param, builder);
-        LLVMBuildCall2(builder, )
-
+        LLVMBuildCall2(builder, print_type, print_func, &value_to_print, 1, "call_to_print");
+        return startBB;
     }
 }
 
