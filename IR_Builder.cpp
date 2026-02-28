@@ -1,8 +1,10 @@
 #include <llvm-c/Core.h>
 #include <llvm-c/TargetMachine.h>
+#include "ast/ast.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <vector> // to keep track of old and new names in scopes
 #include <queue> // for BFS later
 
 void main_algorithm(astNode* prog_node);
@@ -22,6 +24,98 @@ LLVMValueRef print_func;
 LLVMValueRef ret_ref;
 LLVMBasicBlockRef retBB;
 LLVMContextRef context;
+
+// using the counter approach to get unique names
+int counter_as_suffix = 0;
+// using vector of maps to have a map per each scope to analyze from the innermost
+// scope outwards. Each map will have the old name as key and the new name
+// as value
+std::vector<std::unordered_map<std::string, std::string>> maps_of_scopes;
+
+void var_names_unique(astNode* prog_node) {
+    maps_of_scopes.push_back({});
+    if (prog_node->type == ast_prog) {
+        if ( prog_node->prog.func->func.param != NULL ) {
+            char* old_name = prog_node->prog.func->func.param->var.name;
+            std::string new_name_in_std_string = std::string(old_name) + "_" + std::to_string(counter_as_suffix);
+            counter_as_suffix++;
+             // updating the name and making it be char* through strdup() and .c_str()
+            prog_node->prog.func->func.param->var.name = strdup(new_name_in_std_string.c_str());
+            // we store the relation of old name and new name for the current scope (we convert to std::string to match map datatypes)
+            maps_of_scopes.back()[std::string(old_name)] = new_name_in_std_string;
+        };
+    }
+
+    // we call the helper to rename variables inside the stmt_list
+    helper_rename_stmt_list(prog_node -> prog.func -> func.body -> stmt.block.stmt_list);
+}
+
+void helper_rename_stmt_list(vector<astNode*>* stmt_list) {
+    // for each stmt in the stmt_list in the function body we inspect to rename
+    for (astNode* stmt_astNode : *(stmt_list)) {
+        helper_rename_stmt(stmt_astNode);
+    }
+}
+
+void helper_rename_stmt(astNode* stmt_astNode) {
+    if (stmt_astNode->stmt.type == ast_decl) {
+        char* old_name = stmt_astNode->stmt.decl.name;
+        std::string new_name_in_std_string = std::string(old_name) + "_" + std::to_string(counter_as_suffix);
+        counter_as_suffix++;
+        stmt_astNode->stmt.decl.name = strdup(new_name_in_std_string.c_str());
+        maps_of_scopes.back()[std::string(old_name)] = new_name_in_std_string;
+    } else if (stmt_astNode->stmt.type == ast_block) {
+        // we introduce a new scope for analysis
+        maps_of_scopes.push_back({});
+        // make recursive call to check the stmt_list inside the block and do proper renaming
+        helper_rename_stmt_list(stmt_astNode->stmt.block.stmt_list);
+        maps_of_scopes.pop_back();
+    } else if (stmt_astNode -> stmt.type == ast_while) {
+        helper_rename_expr(stmt_astNode->stmt.whilen.cond);
+        helper_rename_stmt(stmt_astNode->stmt.whilen.body);
+    } else if (stmt_astNode -> stmt.type == ast_asgn) {
+        helper_rename_expr(stmt_astNode->stmt.asgn.lhs);
+        helper_rename_expr(stmt_astNode->stmt.asgn.rhs);
+    } else if (stmt_astNode -> stmt.type == ast_if) {
+        helper_rename_expr(stmt_astNode->stmt.ifn.cond);
+        helper_rename_stmt(stmt_astNode->stmt.ifn.if_body);
+        if (stmt_astNode->stmt.ifn.else_body != NULL) {
+            helper_rename_stmt(stmt_astNode->stmt.ifn.else_body);
+        }
+    } else if (stmt_astNode -> stmt.type == ast_ret) {
+        helper_rename_expr(stmt_astNode->stmt.ret.expr);
+    } else if (stmt_astNode -> stmt.type == ast_call) {
+        helper_rename_expr(stmt_astNode->stmt.call.param);
+    }
+}
+
+void helper_rename_expr(astNode* expression) {
+    if (expression == NULL) return;
+    if (expression->type == ast_var) {
+        char* old_name = expression->var.name;
+        char* new_name = old_name; // we initialize to old_name which gets updated as we encounter the new name of its declared variable
+        // checking from the innermost scope to the outermost to update var name
+        for (int i = maps_of_scopes.size()-1; i >= 0; i--) {
+            // using std::string datatypes in the map to compare actual content rather than 
+            // the pointers
+            if (maps_of_scopes[i].count(std::string(old_name)) != 0) { // check if the key exists in the map
+                std::string new_name_in_std_string = maps_of_scopes[i][std::string(old_name)];
+                new_name = strdup(new_name_in_std_string.c_str());
+                break;
+            }
+        }
+        expression->var.name = new_name;
+    } else if (expression->type == ast_rexpr) {
+        helper_rename_expr(expression->rexpr.lhs);
+        helper_rename_expr(expression->rexpr.rhs);
+    } else if (expression->type == ast_bexpr) {
+        helper_rename_expr(expression->bexpr.lhs);
+        helper_rename_expr(expression->bexpr.rhs);
+    } else if (expression->type == ast_uexpr) {
+        helper_rename_expr(expression->uexpr.expr);
+    }
+    // the other types are already handled before reaching this point like prog, func, or statement.
+}
 
 // main algorithm
 void main_algorithm(astNode* prog_node) {
