@@ -11,7 +11,7 @@ void var_names_unique(astNode* prog_node);
 void helper_rename_stmt_list(vector<astNode*>* stmt_list);
 void helper_rename_stmt(astNode* stmt_astNode);
 void helper_rename_expr(astNode* expression);
-void main_algorithm(astNode* prog_node);
+LLVMModuleRef main_algorithm(astNode* prog_node);
 LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLVMBasicBlockRef startBB);
 LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder);
 void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vector<astNode*> * stmt_list);
@@ -122,7 +122,7 @@ void helper_rename_expr(astNode* expression) {
 }
 
 // main algorithm
-void main_algorithm(astNode* prog_node) {
+LLVMModuleRef main_algorithm(astNode* prog_node) {
     // creating context to store all LLVM IR objects
     context = LLVMContextCreate();
 
@@ -421,6 +421,7 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
         }
         return prevBB;
     }
+    return NULL;
 }
 
 LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder) {
@@ -518,4 +519,5 @@ LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder) {
         return call_llvm;
 
     }
+    return NULL;
 }
