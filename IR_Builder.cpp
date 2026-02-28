@@ -7,6 +7,10 @@
 #include <vector> // to keep track of old and new names in scopes
 #include <queue> // for BFS later
 
+void var_names_unique(astNode* prog_node);
+void helper_rename_stmt_list(vector<astNode*>* stmt_list);
+void helper_rename_stmt(astNode* stmt_astNode);
+void helper_rename_expr(astNode* expression);
 void main_algorithm(astNode* prog_node);
 LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLVMBasicBlockRef startBB);
 LLVMValueRef genIRExpr(astNode* expression, LLVMBuilderRef builder);
@@ -230,7 +234,7 @@ void main_algorithm(astNode* prog_node) {
     // adding return instruction for the load instruction
     LLVMValueRef return_ins = LLVMBuildRet(builder, load_ins_to_retBB);
 
-    // generating iR for the function body
+    // generating IR for the function body
     LLVMBasicBlockRef exitBB = genIRStmt(body, builder, entryBB);
 
     // getting termiantor instruction of exitBB
@@ -243,7 +247,7 @@ void main_algorithm(astNode* prog_node) {
     // removing all basic blocks that do not have any predecessor basic blocks
     // performing BFS to determine all the blocks that are in the connected component (contained in visited)
     std::queue<LLVMBasicBlockRef> q;
-    q.push(entryBB) // we start with entry block
+    q.push(entryBB); // we start with entry block
     std::unordered_set<LLVMBasicBlockRef> visited; // any basic block which is not here would mean it does not have predecessor blocks
     while (!q.empty()) {
         LLVMBasicBlockRef curr_bb = q.front();
@@ -257,7 +261,7 @@ void main_algorithm(astNode* prog_node) {
             // if we get visited.end() that means the successor is not found in visited so we add it to the queue 
             // and mark as visited
             if (visited.find(LLVMGetSuccessor(curr_terminator, index_of_successor)) == visited.end()){
-                q.push(LLVMGetSuccessor(curr_terminator index_of_successor));
+                q.push(LLVMGetSuccessor(curr_terminator, index_of_successor));
                 visited.insert(LLVMGetSuccessor(curr_terminator, index_of_successor));
             }
             index_of_successor++;
@@ -272,10 +276,9 @@ void main_algorithm(astNode* prog_node) {
             LLVMDeleteBasicBlock(bb);
         }
     }
-    // memory cleanup
+
     LLVMDisposeBuilder(builder);
-    LLVMDisposeModule(module);
-    LLVMContextDispose(context);
+    return module;
 }
 
 void set_insert_local_vars(std::unordered_set<std::string>* set_to_modify, vector<astNode*> * stmt_list) {
