@@ -125,6 +125,7 @@ void helper_rename_expr(astNode* expression) {
 LLVMModuleRef main_algorithm(astNode* prog_node) {
     // creating context to store all LLVM IR objects
     context = LLVMContextCreate();
+    printf("1. Context created...\n"); // debug print statements
 
     // getting the architecture from the machine
     char* triple = LLVMGetDefaultTargetTriple();
@@ -132,6 +133,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
     // generating module and setting target architecture
     LLVMModuleRef module = LLVMModuleCreateWithNameInContext("module",
                                                 context);
+    printf("2. Module created...\n");
 
     LLVMSetTarget(module, triple);
 
@@ -153,6 +155,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
 
     // visiting the function node of the astProg node
     astNode* function_node = prog_node -> prog.func;
+    printf("Function node accessed...\n");
     
     // creating LLVM builder
     LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
@@ -183,6 +186,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
     LLVMBasicBlockRef entryBB = LLVMAppendBasicBlockInContext(context,
                                                 main_function,
                                                 "main_function_body");
+    printf("EntryBB created...\n");
     // creating set with names of all parameters and local variables
     std::unordered_set <std::string> names_of_params_and_local_vars;
     
@@ -190,6 +194,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
     if (param_count != 0) {
         char* name_of_param = pointer_to_param -> var.name;
         names_of_params_and_local_vars.insert(name_of_param);
+        printf("Param added...\n");
     }
     // adding local variables if applicable
     astNode* body = function_node -> func.body;
@@ -197,6 +202,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
         vector<astNode*> * stmt_list = body -> stmt.block.stmt_list;
         // call to helper method to continue filling the set
         set_insert_local_vars(&names_of_params_and_local_vars, stmt_list);
+        printf("Local vars added...\n");
     }
 
     // setting the position of the builder at the end of entryBB
@@ -208,6 +214,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
         LLVMValueRef alloca_object = LLVMBuildAlloca(builder, int_data_type, name_of_var.c_str());
         var_map[name_of_var] = alloca_object;
     }
+    printf("Allocas created...\n");
     // generating the alloc instruction for the return value
     ret_ref = LLVMBuildAlloca(builder, int_data_type, "ret_ref");
     // generating the store instruction to store function parameter into respective alloca ptr
@@ -224,6 +231,7 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
     
     // generating retBB as the return basic block
     retBB = LLVMAppendBasicBlockInContext(context, main_function, "return");
+    printf("retBB created...\n");
 
     // setting the position of builder at the end of retBB
     LLVMPositionBuilderAtEnd(builder, retBB);
@@ -234,8 +242,10 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
     // adding return instruction for the load instruction
     LLVMValueRef return_ins = LLVMBuildRet(builder, load_ins_to_retBB);
 
+    printf("Starting genIRStmt...\n");
     // generating IR for the function body
     LLVMBasicBlockRef exitBB = genIRStmt(body, builder, entryBB);
+    printf("Completed genIRStmt...\n");
 
     // getting termiantor instruction of exitBB
     LLVMValueRef exitBB_terminator = LLVMGetBasicBlockTerminator(exitBB);
@@ -267,16 +277,18 @@ LLVMModuleRef main_algorithm(astNode* prog_node) {
             index_of_successor++;
         }
     }
-    LLVMBasicBlockRef temporary_reference_for_bb;
-    for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(main_function); bb != NULL; bb = LLVMGetNextBasicBlock(temporary_reference_for_bb)) {
-        temporary_reference_for_bb = bb;
-        // if the bb is not found in basic block at this point that means it does not have predecessors
-        // so we delete it 
-        if (visited.find(bb) == visited.end()) {
+    printf("BFS completed...\n");
+    LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(main_function);
+    while (bb != NULL) {
+        LLVMBasicBlockRef next_bb = LLVMGetNextBasicBlock(bb);
+        // if the bb is not found in visited at this point that means it does not have predecessors
+        // so we delete it and continue with the next one to check
+        if (visited.find(bb) == visited.end()){
             LLVMDeleteBasicBlock(bb);
         }
+        bb = next_bb;
     }
-
+    printf("Deletion of disconnected basic blocks finished...\n");
     LLVMDisposeBuilder(builder);
     return module;
 }
@@ -420,6 +432,8 @@ LLVMBasicBlockRef genIRStmt(astNode* statement_node, LLVMBuilderRef builder, LLV
             prevBB = genIRStmt(stmt, builder, prevBB);
         }
         return prevBB;
+    } else if (stmt_object.type == ast_decl){
+        return startBB; // it is not modified b/c all the vars and params alloca instructinos were already created
     }
     return NULL;
 }
